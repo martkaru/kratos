@@ -151,13 +151,13 @@ func (s *Strategy) continueSettingsFlow(
 		return err
 	}
 
-	ctxUpdate.Session.Identity = i
+	ctxUpdate.UpdateIdentity(i)
 
 	return nil
 }
 
 func (s *Strategy) PopulateSettingsMethod(r *http.Request, _ *identity.Identity, f *settings.Flow) error {
-	f.UI.Nodes.Upsert(node.NewInputField("method", "password", node.PasswordGroup, node.InputAttributeTypeSubmit))
+	f.UI.Nodes.Append(node.NewInputField("method", "password", node.PasswordGroup, node.InputAttributeTypeSubmit))
 	f.UI.Nodes.Upsert(NewPasswordNode("password.password"))
 	f.UI.SetCSRF(s.d.GenerateCSRFToken(r))
 
@@ -167,14 +167,14 @@ func (s *Strategy) PopulateSettingsMethod(r *http.Request, _ *identity.Identity,
 func (s *Strategy) handleSettingsError(w http.ResponseWriter, r *http.Request, ctxUpdate *settings.UpdateContext, p *CompleteSelfServiceSettingsFlowWithPasswordMethod, err error) error {
 	// Do not pause flow if the flow type is an API flow as we can't save cookies in those flows.
 	if e := new(settings.FlowNeedsReAuth); errors.As(err, &e) && ctxUpdate.Flow != nil && ctxUpdate.Flow.Type == flow.TypeBrowser {
-		if err := s.d.ContinuityManager().Pause(r.Context(), w, r, settings.ContinuityKey(s.SettingsStrategyID()), settings.ContinuityOptions(p, ctxUpdate.Session.Identity)...); err != nil {
+		if err := s.d.ContinuityManager().Pause(r.Context(), w, r, settings.ContinuityKey(s.SettingsStrategyID()), settings.ContinuityOptions(p, ctxUpdate.GetSessionIdentity())...); err != nil {
 			return err
 		}
 	}
 
 	// var id *identity.Identity
 	if ctxUpdate.Flow != nil {
-		ctxUpdate.Flow.UI.Reset()
+		ctxUpdate.Flow.UI.Reset("method")
 		ctxUpdate.Flow.UI.SetCSRF(s.d.GenerateCSRFToken(r))
 		// id = ctxUpdate.Session.Identity
 	}

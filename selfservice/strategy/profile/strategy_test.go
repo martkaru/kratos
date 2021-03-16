@@ -27,7 +27,6 @@ import (
 	"github.com/ory/kratos/internal"
 	"github.com/ory/kratos/internal/testhelpers"
 	"github.com/ory/kratos/selfservice/flow/settings"
-	"github.com/ory/kratos/selfservice/strategy/profile"
 	"github.com/ory/kratos/x"
 	"github.com/ory/x/assertx"
 	"github.com/ory/x/httpx"
@@ -80,7 +79,7 @@ func TestStrategyTraits(t *testing.T) {
 
 	t.Run("description=not authorized to call endpoints without a session", func(t *testing.T) {
 		t.Run("type=browser", func(t *testing.T) {
-			res, err := http.DefaultClient.Do(httpx.MustNewRequest("POST", publicTS.URL+profile.RouteSettings, strings.NewReader(url.Values{"foo": {"bar"}}.Encode()), "application/x-www-form-urlencoded"))
+			res, err := http.DefaultClient.Do(httpx.MustNewRequest("POST", publicTS.URL+settings.RouteSubmitFlow, strings.NewReader(url.Values{"foo": {"bar"}}.Encode()), "application/x-www-form-urlencoded"))
 			require.NoError(t, err)
 			defer res.Body.Close()
 			assert.EqualValues(t, http.StatusUnauthorized, res.StatusCode, "%+v", res.Request)
@@ -88,7 +87,7 @@ func TestStrategyTraits(t *testing.T) {
 		})
 
 		t.Run("type=api", func(t *testing.T) {
-			res, err := http.DefaultClient.Do(httpx.MustNewRequest("POST", publicTS.URL+profile.RouteSettings, strings.NewReader(`{"foo":"bar"}`), "application/json"))
+			res, err := http.DefaultClient.Do(httpx.MustNewRequest("POST", publicTS.URL+settings.RouteSubmitFlow, strings.NewReader(`{"foo":"bar"}`), "application/json"))
 			require.NoError(t, err)
 			defer res.Body.Close()
 			assert.EqualValues(t, http.StatusUnauthorized, res.StatusCode)
@@ -99,15 +98,15 @@ func TestStrategyTraits(t *testing.T) {
 		f := testhelpers.InitializeSettingsFlowViaBrowser(t, browserUser1, publicTS)
 
 		actual, res := testhelpers.SettingsMakeRequest(t, false, f, browserUser1,
-			url.Values{"traits.foo": {"bar"}, "csrf_token": {"invalid"}}.Encode())
+			url.Values{"profile.traits.booly": {"true"}, "csrf_token": {"invalid"}, "method":{"profile"}}.Encode())
 		assert.EqualValues(t, http.StatusOK, res.StatusCode, "should return a 400 error because CSRF token is not set\n\t%s", actual)
-		assertx.EqualAsJSON(t, x.ErrInvalidCSRFToken, json.RawMessage(gjson.Get(actual, "0").Raw))
+		assertx.EqualAsJSON(t, x.ErrInvalidCSRFToken, json.RawMessage(gjson.Get(actual, "0").Raw), actual)
 	})
 
 	t.Run("description=should not fail if CSRF token is invalid/type=api", func(t *testing.T) {
 		f := testhelpers.InitializeSettingsFlowViaAPI(t, apiUser1, publicTS)
 
-		actual, res := testhelpers.SettingsMakeRequest(t, true, f, apiUser1, `{"traits":{},"csrf_token":"invalid"}`)
+		actual, res := testhelpers.SettingsMakeRequest(t, true, f, apiUser1, `{"profile.traits.booly":true,"method":"profile","csrf_token":"invalid"}`)
 		assert.Len(t, res.Cookies(), 0)
 		assert.EqualValues(t, http.StatusBadRequest, res.StatusCode)
 		assert.EqualValues(t, "api", gjson.Get(actual, "type").String())
@@ -134,7 +133,7 @@ func TestStrategyTraits(t *testing.T) {
 			t.Run(fmt.Sprintf("case=%d", k), func(t *testing.T) {
 				f := testhelpers.InitializeSettingsFlowViaAPI(t, apiUser1, publicTS)
 
-				req := testhelpers.NewRequest(t, true, "POST", f.Ui.Action, bytes.NewBufferString(`{"traits":{},"csrf_token":"invalid"}`))
+				req := testhelpers.NewRequest(t, true, "POST", f.Ui.Action, bytes.NewBufferString(`{"profile.traits.booly":true,"method":"profile","csrf_token":"invalid"}`))
 				tc.mod(req.Header)
 
 				res, err := apiUser1.Do(req)
@@ -143,7 +142,7 @@ func TestStrategyTraits(t *testing.T) {
 
 				actual := string(ioutilx.MustReadAll(res.Body))
 				assert.EqualValues(t, http.StatusBadRequest, res.StatusCode)
-				assert.Contains(t, actual, tc.exp)
+				assert.Contains(t, actual, tc.exp, "%s", actual)
 			})
 		}
 	})
@@ -157,7 +156,7 @@ func TestStrategyTraits(t *testing.T) {
 			assert.Equal(t, publicTS.URL+route, payload.RequestUrl)
 
 			assertx.EqualAsJSON(t, &kratos.SettingsFlowMethodConfig{
-				Action: publicTS.URL + profile.RouteSettings + "?flow=" + string(payload.Id),
+				Action: publicTS.URL + settings.RouteSubmitFlow + "?flow=" + string(payload.Id),
 				Method: "POST",
 				Nodes: []kratos.UiNode{
 					*testhelpers.NewFakeCSRFNode(),
@@ -165,7 +164,7 @@ func TestStrategyTraits(t *testing.T) {
 						Type:  "input",
 						Group: "default",
 						Attributes: kratos.UiNodeInputAttributesAsUiNodeAttributes(&kratos.UiNodeInputAttributes{
-							Name: "traits.email",
+							Name: "profile.traits.email",
 							Type: "text",
 							Value: &kratos.UiNodeInputAttributesValue{
 								String: pointerx.String(gjson.GetBytes(id.Traits, "email").String()),
@@ -176,7 +175,7 @@ func TestStrategyTraits(t *testing.T) {
 						Type:  "input",
 						Group: "default",
 						Attributes: kratos.UiNodeInputAttributesAsUiNodeAttributes(&kratos.UiNodeInputAttributes{
-							Name: "traits.stringy",
+							Name: "profile.traits.stringy",
 							Type: "text",
 							Value: &kratos.UiNodeInputAttributesValue{
 								String: pointerx.String("foobar"),
@@ -187,7 +186,7 @@ func TestStrategyTraits(t *testing.T) {
 						Type:  "input",
 						Group: "default",
 						Attributes: kratos.UiNodeInputAttributesAsUiNodeAttributes(&kratos.UiNodeInputAttributes{
-							Name: "traits.numby",
+							Name: "profile.traits.numby",
 							Type: "number",
 							Value: &kratos.UiNodeInputAttributesValue{
 								Float32: pointerx.Float32(2.5),
@@ -198,7 +197,7 @@ func TestStrategyTraits(t *testing.T) {
 						Type:  "input",
 						Group: "default",
 						Attributes: kratos.UiNodeInputAttributesAsUiNodeAttributes(&kratos.UiNodeInputAttributes{
-							Name: "traits.booly",
+							Name: "profile.traits.booly",
 							Type: "checkbox",
 							Value: &kratos.UiNodeInputAttributesValue{
 								Bool: pointerx.Bool(false),
@@ -209,7 +208,7 @@ func TestStrategyTraits(t *testing.T) {
 						Type:  "input",
 						Group: "default",
 						Attributes: kratos.UiNodeInputAttributesAsUiNodeAttributes(&kratos.UiNodeInputAttributes{
-							Name: "traits.should_big_number",
+							Name: "profile.traits.should_big_number",
 							Type: "number",
 							Value: &kratos.UiNodeInputAttributesValue{
 								Float32: pointerx.Float32(2048),
@@ -220,7 +219,7 @@ func TestStrategyTraits(t *testing.T) {
 						Type:  "input",
 						Group: "default",
 						Attributes: kratos.UiNodeInputAttributesAsUiNodeAttributes(&kratos.UiNodeInputAttributes{
-							Name: "traits.should_long_string",
+							Name: "profile.traits.should_long_string",
 							Type: "text",
 							Value: &kratos.UiNodeInputAttributesValue{
 								String: pointerx.String("asdfasdfasdfasdfasfdasdfasdfasdf"),
@@ -254,23 +253,22 @@ func TestStrategyTraits(t *testing.T) {
 
 	var expectValidationError = func(t *testing.T, isAPI bool, hc *http.Client, values func(url.Values)) string {
 		return testhelpers.SubmitSettingsForm(t, isAPI, hc, publicTS, values,
-			settings.StrategyProfile,
 			testhelpers.ExpectStatusCode(isAPI, http.StatusBadRequest, http.StatusOK),
-			testhelpers.ExpectURL(isAPI, publicTS.URL+profile.RouteSettings, conf.SelfServiceFlowSettingsUI().String()))
+			testhelpers.ExpectURL(isAPI, publicTS.URL+settings.RouteSubmitFlow, conf.SelfServiceFlowSettingsUI().String()))
 	}
 
 	t.Run("description=should come back with form errors if some profile data is invalid", func(t *testing.T) {
 		var check = func(t *testing.T, actual string) {
-			assert.NotEmpty(t, gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==csrf_token).attributes.value").String(), "%s", actual)
-			assert.Equal(t, "too-short", gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.should_long_string).attributes.value").String(), "%s", actual)
-			assert.Equal(t, "bazbar", gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.stringy).attributes.value").String(), "%s", actual)
-			assert.Equal(t, "2.5", gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.numby).attributes.value").String(), "%s", actual)
-			assert.Equal(t, "length must be >= 25, but got 9", gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.should_long_string).messages.0.text").String(), "%s", actual)
+			assert.NotEmpty(t, gjson.Get(actual, "ui.nodes.#(attributes.name==csrf_token).attributes.value").String(), "%s", actual)
+			assert.Equal(t, "too-short", gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.should_long_string).attributes.value").String(), "%s", actual)
+			assert.Equal(t, "bazbar", gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.stringy).attributes.value").String(), "%s", actual)
+			assert.Equal(t, "2.5", gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.numby).attributes.value").String(), "%s", actual)
+			assert.Equal(t, "length must be >= 25, but got 9", gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.should_long_string).messages.0.text").String(), "%s", actual)
 		}
 
 		var payload = func(v url.Values) {
-			v.Set("traits.should_long_string", "too-short")
-			v.Set("traits.stringy", "bazbar")
+			v.Set("profile.traits.should_long_string", "too-short")
+			v.Set("profile.traits.stringy", "bazbar")
 		}
 
 		t.Run("type=api", func(t *testing.T) {
@@ -289,7 +287,7 @@ func TestStrategyTraits(t *testing.T) {
 			values := testhelpers.SDKFormFieldsToURLValues(f.Ui.Nodes)
 			actual, res := testhelpers.SettingsMakeRequest(t, true, f, apiUser2, testhelpers.EncodeFormAsJSON(t, true, values))
 			assert.Equal(t, http.StatusBadRequest, res.StatusCode)
-			assert.Contains(t, gjson.Get(actual, "error.reason").String(), "initiated by another person", "%s", actual)
+			assert.Contains(t, gjson.Get(actual, "ui.messages.text").String(), "initiated by another person", "%s", actual)
 		})
 
 		t.Run("type=browser", func(t *testing.T) {
@@ -298,7 +296,7 @@ func TestStrategyTraits(t *testing.T) {
 			values := testhelpers.SDKFormFieldsToURLValues(f.Ui.Nodes)
 			actual, res := testhelpers.SettingsMakeRequest(t, false, f, browserUser2, values.Encode())
 			assert.Equal(t, http.StatusOK, res.StatusCode)
-			assert.Contains(t, gjson.Get(actual, "0.reason").String(), "initiated by another person", "%s", actual)
+			assert.Contains(t, gjson.Get(actual, "ui.messages.text").String(), "initiated by another person", "%s", actual)
 		})
 	})
 
@@ -307,7 +305,7 @@ func TestStrategyTraits(t *testing.T) {
 			time.Sleep(time.Millisecond)
 
 			values := testhelpers.SDKFormFieldsToURLValues(config.Ui.Nodes)
-			values.Set("traits.email", "not-john-doe@foo.bar")
+			values.Set("profile.traits.email", "not-john-doe@foo.bar")
 			res, err := c.PostForm(config.Ui.Action, values)
 			require.NoError(t, err)
 			defer res.Body.Close()
@@ -319,7 +317,7 @@ func TestStrategyTraits(t *testing.T) {
 			f := testhelpers.InitializeSettingsFlowViaAPI(t, apiUser1, publicTS)
 			res := run(t, f, true, apiUser1)
 			assert.EqualValues(t, http.StatusForbidden, res.StatusCode)
-			assert.Contains(t, res.Request.URL.String(), publicTS.URL+profile.RouteSettings)
+			assert.Contains(t, res.Request.URL.String(), publicTS.URL+settings.RouteSubmitFlow)
 		})
 
 		t.Run("type=browser", func(t *testing.T) {
@@ -333,13 +331,13 @@ func TestStrategyTraits(t *testing.T) {
 	t.Run("flow=fail first update", func(t *testing.T) {
 		var check = func(t *testing.T, actual string) {
 			assert.EqualValues(t, settings.StateShowForm, gjson.Get(actual, "state").String(), "%s", actual)
-			assert.Equal(t, "1", gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.should_big_number).attributes.value").String(), "%s", actual)
-			assert.Equal(t, "must be >= 1200 but found 1", gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.should_big_number).messages.0.text").String(), "%s", actual)
-			assert.Equal(t, "foobar", gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.stringy).attributes.value").String(), "%s", actual) // sanity check if original payload is still here
+			assert.Equal(t, "1", gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.should_big_number).attributes.value").String(), "%s", actual)
+			assert.Equal(t, "must be >= 1200 but found 1", gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.should_big_number).messages.0.text").String(), "%s", actual)
+			assert.Equal(t, "foobar", gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.stringy).attributes.value").String(), "%s", actual) // sanity check if original payload is still here
 		}
 
 		var payload = func(v url.Values) {
-			v.Set("traits.should_big_number", "1")
+			v.Set("profile.traits.should_big_number", "1")
 		}
 
 		t.Run("type=api", func(t *testing.T) {
@@ -355,22 +353,22 @@ func TestStrategyTraits(t *testing.T) {
 		var check = func(t *testing.T, actual string) {
 			assert.EqualValues(t, settings.StateShowForm, gjson.Get(actual, "state").String(), "%s", actual)
 
-			assert.Empty(t, gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.should_big_number).messages.0.text").String(), "%s", actual)
-			assert.Empty(t, gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.should_big_number).attributes.value").String(), "%s", actual)
+			assert.Empty(t, gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.should_big_number).messages.0.text").String(), "%s", actual)
+			assert.Empty(t, gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.should_big_number).attributes.value").String(), "%s", actual)
 
-			assert.Equal(t, "short", gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.should_long_string).attributes.value").String(), "%s", actual)
-			assert.Equal(t, "length must be >= 25, but got 5", gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.should_long_string).messages.0.text").String(), "%s", actual)
+			assert.Equal(t, "short", gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.should_long_string).attributes.value").String(), "%s", actual)
+			assert.Equal(t, "length must be >= 25, but got 5", gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.should_long_string).messages.0.text").String(), "%s", actual)
 
-			assert.Equal(t, "this-is-not-a-number", gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.numby).attributes.value").String(), "%s", actual)
-			assert.Equal(t, "expected number, but got string", gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.numby).messages.0.text").String(), "%s", actual)
+			assert.Equal(t, "this-is-not-a-number", gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.numby).attributes.value").String(), "%s", actual)
+			assert.Equal(t, "expected number, but got string", gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.numby).messages.0.text").String(), "%s", actual)
 
-			assert.Equal(t, "foobar", gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.stringy).attributes.value").String(), "%s", actual) // sanity check if original payload is still here
+			assert.Equal(t, "foobar", gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.stringy).attributes.value").String(), "%s", actual) // sanity check if original payload is still here
 		}
 
 		var payload = func(v url.Values) {
-			v.Del("traits.should_big_number")
-			v.Set("traits.should_long_string", "short")
-			v.Set("traits.numby", "this-is-not-a-number")
+			v.Del("profile.traits.should_big_number")
+			v.Set("profile.traits.should_long_string", "short")
+			v.Set("profile.traits.numby", "this-is-not-a-number")
 		}
 
 		t.Run("type=api", func(t *testing.T) {
@@ -384,8 +382,8 @@ func TestStrategyTraits(t *testing.T) {
 
 	var expectSuccess = func(t *testing.T, isAPI bool, hc *http.Client, values func(url.Values)) string {
 		return testhelpers.SubmitSettingsForm(t, isAPI, hc, publicTS, values,
-			settings.StrategyProfile, http.StatusOK,
-			testhelpers.ExpectURL(isAPI, publicTS.URL+profile.RouteSettings, conf.SelfServiceFlowSettingsUI().String()))
+			http.StatusOK,
+			testhelpers.ExpectURL(isAPI, publicTS.URL+settings.RouteSubmitFlow, conf.SelfServiceFlowSettingsUI().String()))
 	}
 
 	t.Run("flow=succeed with final request", func(t *testing.T) {
@@ -397,21 +395,21 @@ func TestStrategyTraits(t *testing.T) {
 		var check = func(t *testing.T, actual string) {
 			assert.EqualValues(t, settings.StateSuccess, gjson.Get(actual, "state").String(), "%s", actual)
 
-			assert.Empty(t, gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.numby).attributes.errors").Value(), "%s", actual)
-			assert.Empty(t, gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.should_big_number).attributes.errors").Value(), "%s", actual)
-			assert.Empty(t, gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.should_long_string).attributes.errors").Value(), "%s", actual)
+			assert.Empty(t, gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.numby).attributes.errors").Value(), "%s", actual)
+			assert.Empty(t, gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.should_big_number).attributes.errors").Value(), "%s", actual)
+			assert.Empty(t, gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.should_long_string).attributes.errors").Value(), "%s", actual)
 
-			assert.Equal(t, 15.0, gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.numby).attributes.value").Value(), "%s", actual)
-			assert.Equal(t, 9001.0, gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.should_big_number).attributes.value").Value(), "%s", actual)
-			assert.Equal(t, "this is such a long string, amazing stuff!", gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.should_long_string).attributes.value").Value(), "%s", actual)
+			assert.Equal(t, 15.0, gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.numby).attributes.value").Value(), "%s", actual)
+			assert.Equal(t, 9001.0, gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.should_big_number).attributes.value").Value(), "%s", actual)
+			assert.Equal(t, "this is such a long string, amazing stuff!", gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.should_long_string).attributes.value").Value(), "%s", actual)
 		}
 
 		var payload = func(newEmail string) func(v url.Values) {
 			return func(v url.Values) {
-				v.Set("traits.email", newEmail)
-				v.Set("traits.numby", "15")
-				v.Set("traits.should_big_number", "9001")
-				v.Set("traits.should_long_string", "this is such a long string, amazing stuff!")
+				v.Set("profile.traits.email", newEmail)
+				v.Set("profile.traits.numby", "15")
+				v.Set("profile.traits.should_big_number", "9001")
+				v.Set("profile.traits.should_long_string", "this is such a long string, amazing stuff!")
 			}
 		}
 
@@ -431,7 +429,7 @@ func TestStrategyTraits(t *testing.T) {
 		}
 
 		var payload = func(v url.Values) {
-			v.Set("traits.should_long_string", "short")
+			v.Set("profile.traits.should_long_string", "short")
 		}
 
 		t.Run("type=api", func(t *testing.T) {
@@ -458,7 +456,7 @@ func TestStrategyTraits(t *testing.T) {
 		f := testhelpers.InitializeSettingsFlowViaBrowser(t, browserUser1, publicTS)
 
 		values := testhelpers.SDKFormFieldsToURLValues(f.Ui.Nodes)
-		values.Set("traits.should_big_number", "9001")
+		values.Set("profile.traits.should_big_number", "9001")
 		res, err := browserUser1.PostForm(f.Ui.Action, values)
 
 		require.NoError(t, err)
@@ -483,7 +481,7 @@ func TestStrategyTraits(t *testing.T) {
 
 		var check = func(t *testing.T, actual, newEmail string) {
 			assert.EqualValues(t, settings.StateSuccess, gjson.Get(actual, "state").String(), "%s", actual)
-			assert.Equal(t, newEmail, gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.email).attributes.value").Value(), "%s", actual)
+			assert.Equal(t, newEmail, gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.email).attributes.value").Value(), "%s", actual)
 
 			m, err := reg.CourierPersister().LatestQueuedMessage(context.Background())
 			require.NoError(t, err)
@@ -492,7 +490,8 @@ func TestStrategyTraits(t *testing.T) {
 
 		var payload = func(newEmail string) func(v url.Values) {
 			return func(v url.Values) {
-				v.Set("traits.email", newEmail)
+				v.Set("method", settings.StrategyProfile)
+				v.Set("profile.traits.email", newEmail)
 			}
 		}
 
@@ -517,16 +516,17 @@ func TestStrategyTraits(t *testing.T) {
 
 		var check = func(t *testing.T, newEmail string, actual string) {
 			assert.EqualValues(t, settings.StateSuccess, gjson.Get(actual, "state").String(), "%s", actual)
-			assert.Empty(t, gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.numby).attributes.errors").Value(), "%s", actual)
-			assert.Empty(t, gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.should_big_number).attributes.errors").Value(), "%s", actual)
-			assert.Empty(t, gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.should_long_string).attributes.errors").Value(), "%s", actual)
-			assert.Equal(t, newEmail, gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.email).attributes.value").Value(), "%s", actual)
-			assert.Equal(t, "foobar", gjson.Get(actual, "methods.profile.config.nodes.#(attributes.name==traits.stringy).attributes.value").String(), "%s", actual) // sanity check if original payload is still here
+			assert.Empty(t, gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.numby).attributes.errors").Value(), "%s", actual)
+			assert.Empty(t, gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.should_big_number).attributes.errors").Value(), "%s", actual)
+			assert.Empty(t, gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.should_long_string).attributes.errors").Value(), "%s", actual)
+			assert.Equal(t, newEmail, gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.email).attributes.value").Value(), "%s", actual)
+			assert.Equal(t, "foobar", gjson.Get(actual, "ui.nodes.#(attributes.name==profile.traits.stringy).attributes.value").String(), "%s", actual) // sanity check if original payload is still here
 		}
 
 		var payload = func(email string) func(v url.Values) {
 			return func(v url.Values) {
-				v.Set("traits.email", email)
+				v.Set("method", settings.StrategyProfile)
+				v.Set("profile.traits.email", email)
 			}
 		}
 
@@ -543,6 +543,7 @@ func TestStrategyTraits(t *testing.T) {
 		})
 	})
 }
+
 func TestDisabledEndpoint(t *testing.T) {
 	conf, reg := internal.NewFastRegistryWithMocks(t)
 	conf.MustSet(config.ViperKeyDefaultIdentitySchemaURL, "file://./stub/identity.schema.json")
@@ -555,7 +556,7 @@ func TestDisabledEndpoint(t *testing.T) {
 	t.Run("case=should not submit when profile method is disabled", func(t *testing.T) {
 
 		t.Run("method=GET", func(t *testing.T) {
-			res, err := browserUser1.Get(publicTS.URL + profile.RouteSettings)
+			res, err := browserUser1.Get(publicTS.URL + settings.RouteSubmitFlow)
 			require.NoError(t, err)
 			assert.Equal(t, http.StatusNotFound, res.StatusCode)
 
@@ -565,7 +566,7 @@ func TestDisabledEndpoint(t *testing.T) {
 		})
 
 		t.Run("method=POST", func(t *testing.T) {
-			res, err := browserUser1.PostForm(publicTS.URL+profile.RouteSettings, url.Values{"age": {"16"}})
+			res, err := browserUser1.PostForm(publicTS.URL+settings.RouteSubmitFlow, url.Values{"age": {"16"}})
 			require.NoError(t, err)
 			assert.Equal(t, http.StatusNotFound, res.StatusCode)
 

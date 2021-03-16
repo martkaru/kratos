@@ -30,8 +30,21 @@ type UpdatePayload interface {
 }
 
 type UpdateContext struct {
-	Session *session.Session
-	Flow    *Flow
+	Session  *session.Session
+	Flow     *Flow
+	toUpdate *identity.Identity
+}
+
+func (c *UpdateContext) UpdateIdentity(i *identity.Identity) {
+	c.toUpdate = i
+}
+
+func (c *UpdateContext) GetIdentityToUpdate() *identity.Identity {
+	if c.toUpdate == nil {
+		return c.GetSessionIdentity()
+	}
+
+	return c.toUpdate
 }
 
 func (c UpdateContext) GetSessionIdentity() *identity.Identity {

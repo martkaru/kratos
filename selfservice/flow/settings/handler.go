@@ -401,11 +401,11 @@ func (h *Handler) submitSettingsFlow(w http.ResponseWriter, r *http.Request, ps 
 	}
 
 	if !found {
-		h.d.SettingsFlowErrorHandler().WriteFlowError(w, r, node.DefaultGroup, f, ss.Identity, errors.WithStack(schema.NewNoRegistrationStrategyResponsible()))
+		h.d.SettingsFlowErrorHandler().WriteFlowError(w, r, node.DefaultGroup, f, c.GetIdentityToUpdate(), errors.WithStack(schema.NewNoRegistrationStrategyResponsible()))
 		return
 	}
 
-	if err := h.d.SettingsHookExecutor().PostSettingsHook(w, r, s, c, ss.Identity); err != nil {
+	if err := h.d.SettingsHookExecutor().PostSettingsHook(w, r, s, c, c.GetIdentityToUpdate()); err != nil {
 		h.d.SelfServiceErrorManager().Forward(r.Context(), w, r, err)
 		return
 	}
